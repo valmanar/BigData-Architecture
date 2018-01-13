@@ -1,0 +1,51 @@
+// Traspaso de una tabla entera, ejemplo CLIENTES, se genera el fichero en un directorio de rawdata para las cargas totales
+// Es importante que tengamos una primary key en las tablas de mysql para hace el split y que estos estén uniformemente
+// distribuidos para que queden balanceados, sqoop lo detecta, si no fuera así ó se desea indicar otro campo
+// Con el atributo --columns seleccionamos que columnas cargar de la tabla origen
+// Indicamos como queremos que nos separe los campos en el registro, elijo el pipe porque si llevo algún campo de texto  
+// que lleve una coma podria partir por donde no quiero 
+// Con el atributo -P nos pedira la password, si no queremos que la pida pondriamos --password <clave>
+
+sqoop import --connect jdbc:mysql://localhost:3306/test --username test -P --split-by id_cliente --table clientes --columns id_cliente,nombre_cliente,apellidos_cliente --fields-terminated-by '|' --target-dir /rawdata/cargas_totales
+
+// Traspaso incremental, hay dos formas incrementales: append si sabemos que en el origen no se actualizan datos, 
+// lastmodified si se actualizan datos y queremos cargar esas actualizaciones y nuevas incorporaciones
+// se indica la columna por la cuál queremos comprobar y el destino
+
+sqoop import --connect jdbc:mysql://localhost:3306/test --username test -P --split-by id_cliente --table clientes --columns id_cliente,nombre_cliente,apellidos_cliente --fields-terminated-by '|' --check-column fecha_modificacion --incremental lastmodified --last-value 2017-11-01 --target-dir /rawdata/cargas_incrementales       
+
+// Podriamos cargar estas tablas directamente a tablas Hive evitando la carga desde fichero, habría que añadir el parámetro
+// --hive-import --hive-table base_de_datos.tabla
+
+sqoop import --connect jdbc:mysql://localhost:3306/test --username test -P --split-by id_cliente --table clientes --columns id_cliente,nombre_cliente,apellidos_cliente --fields-terminated-by '|' --check-column fecha_modificacion --incremental lastmodified --last-value 2017-11-01 --target-dir /rawdata/cargas_incrementales --hive-import --create-hive-table --hive-table bigdata_architecture.clientes  
+
+// Carga de datos de hdfs a Hive en tablas externas, valido para totales e incrementales, cambiar el path del fichero en hdfs
+
+load data inpath '/rawdata/cargas_totales/clientes' into table bigdata_architecture.clientes_external
+load data inpath '/rawdata/cargas_incrementales/clientes' into table bigdata_architecture.clientes_external
+
+// Ya en el área de STAGE hacemos una transformación y añadimos el timestamp en las tablas Hive
+
+update clientes_external set fecha_modificacion = from_unixtime(unix_timestamp()) 
+
+// Tambien añadimos un numero de carga para poder referenciar todos los registros de una carga determinada
+
+update clientes_external set identificador_carga = 1256
+
+// Traspasamos las tablas del área de STAGE a TRUSTED ZONE mediante comando Hive
+
+insert into table bigdata_architecture.clientes partition (id_cliente)
+select * from bigdata_architecture.clientes_external;
+
+// Creamos los datos en tablon_clientes, obtenemos el período de la agrupacion de fechas de las facturas extrayendo 
+// el año y mes y sumarizamos el importe total de las facturas, filtrando además por el mes correspondiente en la
+// tabla de facturas
+
+insert into table bigdata_architecture.tablon_clientes partition (id_cliente)
+select c.id_cliente, unix_timestamp(f.fecha_factura, 'yyyy-MM'), c.nombre_cliente, c.apellidos_cliente, sum(f.cantidad), fecha_modificacion, identificador_carga
+from bigdata_architecture.clientes_external c
+inner join facturas f on c.id_cliente = f.id_cliente
+where unix_timestamp(f.fecha_factura, 'yyyy-MM-dd') >= unix_timestamp('2017-11-01', 'yyyy-MM-dd') and
+	unix_timestamp(f.fecha_factura, 'yyyy-MM-dd') <= unix_timestamp('2017-11-30', 'yyyy-MM-dd')
+group by id_cliente, unix_timestamp(f.fecha_factura, 'yyyy-MM'), nombre_cliente, apellidos_cliente, fecha_modificacion, identificador_carga
+

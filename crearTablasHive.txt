@@ -1,0 +1,127 @@
+//creamos cada tabla salvo "tablon_clientes, tablon_metodos_pago 
+// y tablon_productos" de dos formas, gestionadas por hive y sin gestión
+//las que no tienen gestión las utilizamos para cargar en el rawdata y stage
+// para su manipulación y las ponemos una extensión _ext para diferenciarlas
+//las otras son las creadas en trusted zone
+
+create database bigdata_architecture;
+
+create table if not exists tablon_clientes (
+id_cliente int,
+nombre_cliente string,
+apellidos_cliente string,
+cantidad float,
+redes_sociales int,
+identificador_carga int,
+fecha_modificacion datetime)
+PARTITIONED BY (pmod(id_cliente,10))
+CLUSTERED BY (id_cliente) INTO 500 BUCKETS
+STORED AS ORC;
+
+create table if not exists tablon_metodos_pago (
+id_metodo_pago int,
+de_metodo_pago string,
+cantidad int,
+identificador_carga int,
+fecha_modificacion datetime)
+PARTITIONED BY (pmod(id_metodo_pago,10))
+CLUSTERED BY (id_cliente) INTO 10 BUCKETS
+STORED AS ORC;
+
+create table if not exists tablon_productos (
+id_producto int,
+de_producto string,
+cantidad int,
+identificador_carga int,
+fecha_modificacion datetime)
+PARTITIONED BY (pmod(id_producto,10))
+CLUSTERED BY (id_cliente) INTO 100 BUCKETS
+STORED AS ORC;
+
+create table if not exists clientes (
+id_cliente int,
+nombre_cliente string,
+apellidos_cliente string,
+identificador_carga int,
+fecha_modificacion datetime)
+PARTITIONED BY (year string, month string)
+CLUSTERED BY (id_cliente) INTO 256 BUCKETS
+STORED AS ORC;
+
+create table if not exists metodos_pago (
+id_metodo_pago int,
+de_metodo_pago string,
+identificador_carga int,
+fecha_modificacion datetime)
+STORED AS ORC;
+
+create table if not exists facturas (
+id_factura int,
+id_cliente int,
+id_metodo_pago int,
+fecha_factura date,
+cantidad float,
+identificador_carga int,
+fecha_modificacion datetime)
+PARTITIONED BY (pmod(id_cliente,10))
+CLUSTERED BY (id_cliente) INTO 500 BUCKETS
+STORED AS ORC;
+
+create table if not exits servicios (
+id_servicio int,
+id_cliente int,
+id_producto int,
+identificador_carga int,
+fecha_modificacion datetime)
+PARTITIONED BY (pmod(id_cliente,10), id_producto)
+CLUSTERED BY (id_cliente) INTO 500 BUCKETS
+STORED AS ORC;
+
+create table if not exists productos (
+id_producto int,
+de_producto string,
+identificador_carga int,
+fecha_modificacion datetime)
+STORED AS ORC;
+
+create external table if not exists clientes_external (
+id_cliente int,
+nombre_cliente string,
+apellidos_cliente string,
+fecha_modificacion datetime)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY "|"
+STORED AS ORC;
+
+create external table if not exists metodos_pago_external (
+id_metodo_pago int,
+de_metodo_pago string,
+fecha_modificacion datetime)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY "|"
+STORED AS ORC;
+
+create external table if not exists facturas_external (
+id_factura int,
+id_cliente int,
+id_metodo_pago int,
+fecha_factura date,
+cantidad float,
+fecha_modificacion datetime)
+PARTITIONED BY (pmod(id_cliente,10))
+ROW FORMAT DELIMITED FIELDS TERMINATED BY "|"
+STORED AS ORC;
+
+create external table if not exits servicios_external (
+id_servicio int,
+id_cliente int,
+id_producto int,
+fecha_modificacion datetime)
+PARTITIONED BY (pmod(id_cliente,10))
+ROW FORMAT DELIMITED FIELDS TERMINATED BY "|"
+STORED AS ORC;
+
+create external table if not exists productos_external (
+id_producto int,
+de_producto string,
+fecha_modificacion datetime)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY "|"
+STORED AS ORC;
